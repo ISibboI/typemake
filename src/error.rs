@@ -1,4 +1,5 @@
 use thiserror::Error;
+use nom::{Err, Needed};
 
 pub type TypemakeResult<T> = Result<T, TypemakeError>;
 
@@ -22,6 +23,19 @@ impl PartialEq for TypemakeError {
                 }
             }
             TypemakeError::IoError(_) => false,
+        }
+    }
+}
+
+impl<ErrorType: ToString> From<nom::Err<ErrorType>> for TypemakeError {
+    fn from(err: Err<ErrorType>) -> Self {
+        match err {
+            Err::Incomplete(needed) => match needed {
+                Needed::Unknown => Self::ParseError("missing an unknown number of characters".to_owned()),
+                Needed::Size(size) => Self::ParseError(format!("missing {} characters", size)),
+            }
+            Err::Error(e) => Self::ParseError(format!("parser had a recoverable error: {}", e.to_string())),
+            Err::Failure(e) => Self::ParseError(format!("parser had an unrecoverable error: {}", e.to_string())),
         }
     }
 }

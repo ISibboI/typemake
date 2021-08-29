@@ -10,6 +10,7 @@ mod cli;
 mod error;
 mod parser;
 mod typemake;
+mod workflow;
 
 fn main() {
     if let Err(error) = error_main() {
