@@ -1,7 +1,7 @@
 use crate::cli::CliArguments;
-use log::info;
-use crate::TypemakeResult;
+use crate::error::TypemakeResult;
 use crate::parser::parse_typefile;
+use log::info;
 
 pub fn run_typemake_from_cli(cli_arguments: &CliArguments) -> TypemakeResult<()> {
     // Parse typefile

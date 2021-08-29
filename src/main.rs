@@ -1,28 +1,15 @@
+use crate::error::TypemakeResult;
+use crate::typemake::run_typemake_from_cli;
+use clap::Clap;
+use cli::CliArguments;
+use log::error;
 use log::LevelFilter;
 use simplelog::{ColorChoice, TermLogger, TerminalMode};
-use log::{error};
-use error_chain::error_chain;
-use crate::typemake::run_typemake_from_cli;
-use cli::CliArguments;
-use clap::Clap;
 
-mod parser;
 mod cli;
+mod error;
+mod parser;
 mod typemake;
-
-error_chain! {
-    types {
-        TypemakeError, TypemakeErrorKind, TypemakeResultExt, TypemakeResult;
-    }
-
-    links {
-        ParserError(parser::ParserError, parser::ParserErrorKind);
-    }
-
-    errors {
-
-    }
-}
 
 fn main() {
     if let Err(error) = error_main() {
@@ -38,7 +25,7 @@ fn error_main() -> TypemakeResult<()> {
         TerminalMode::Stdout,
         ColorChoice::Auto,
     )
-        .expect("Could not initialize logging");
+    .expect("Could not initialize logging");
 
     // Parse cli arguments
     let cli_arguments = CliArguments::parse();
