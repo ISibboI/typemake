@@ -1,4 +1,5 @@
 use crate::parser::{parse_typefile_content, Typefile};
+use crate::workflow::Tool;
 
 #[test]
 fn test_empty_typefile() {
@@ -6,7 +7,7 @@ fn test_empty_typefile() {
 }
 
 #[test]
-fn test_few_python_lines() {
+fn test_few_code_lines() {
     assert_eq!(
         parse_typefile_content("abc\ndef"),
         Ok(Typefile {
@@ -25,6 +26,15 @@ fn test_tool_definition() {
                 .into_iter()
                 .map(String::from)
                 .collect(),
+            tools: [(
+                "mytool".to_owned(),
+                Tool {
+                    name: "mytool".to_string()
+                }
+            )]
+            .iter()
+            .cloned()
+            .collect(),
             ..Default::default()
         })
     );

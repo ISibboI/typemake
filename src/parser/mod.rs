@@ -1,15 +1,19 @@
 use crate::error::{TypemakeError, TypemakeResult};
 use crate::workflow::Tool;
+use nom::branch::alt;
+use nom::bytes::complete::tag;
 use nom::bytes::complete::{take_till, take_while};
+use nom::character::complete::{line_ending, space0, space1};
 use nom::combinator::{fail, map};
-use nom::error::{ParseError, ErrorKind};
+use nom::error::{ErrorKind, ParseError};
 use nom::multi::fold_many0;
-use nom::{Err};
+use nom::sequence::tuple;
+use nom::{AsChar, Err};
 use std::collections::BTreeMap;
-use std::fs::read_to_string;
-use std::path::Path;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
+use std::fs::read_to_string;
+use std::path::Path;
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +31,11 @@ impl<'a> Display for ParserError {
         if self.nom_errors.is_empty() {
             write!(f, "{}", self.message)
         } else {
-            write!(f, "nom_errors: {:?}, message: {}", self.nom_errors, self.message)
+            write!(
+                f,
+                "nom_errors: {:?}, message: {}",
+                self.nom_errors, self.message
+            )
         }
     }
 }
@@ -36,7 +44,7 @@ impl<'a> ParseError<&'a str> for ParserError {
     fn from_error_kind(input: &'a str, kind: ErrorKind) -> Self {
         Self {
             nom_errors: vec![(input.to_owned(), kind)],
-            message: "".to_string()
+            message: "".to_string(),
         }
     }
 
@@ -77,7 +85,10 @@ impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
                 ToplevelDefinition::CodeLine(line) => result.code_lines.push(line),
                 ToplevelDefinition::Tool(tool) => {
                     if let Some(tool) = result.tools.insert(tool.name.clone(), tool) {
-                        return Err(Err::Failure(ParserError::from(format!("Tool already exists: {:?}", tool.name))));
+                        return Err(Err::Failure(ParserError::from(format!(
+                            "Tool already exists: {:?}",
+                            tool.name
+                        ))));
                     }
                 }
             }
@@ -95,12 +106,12 @@ enum ToplevelDefinition {
 pub fn parse_typefile<P: AsRef<Path> + std::fmt::Debug + Clone>(
     typefile_path: P,
 ) -> TypemakeResult<Typefile> {
-    let typefile_content = read_to_string(typefile_path.clone())?;
+    let typefile_content = read_to_string(typefile_path)?;
     parse_typefile_content(&typefile_content)
 }
 
 pub fn parse_typefile_content(typefile_content: &str) -> TypemakeResult<Typefile> {
-    match nom_typefile(&typefile_content) {
+    match nom_typefile(typefile_content) {
         Ok((_, result)) => Ok(result),
         Err(err) => Err(TypemakeError::ParseError(err.to_string())),
     }
@@ -109,21 +120,39 @@ pub fn parse_typefile_content(typefile_content: &str) -> TypemakeResult<Typefile
 /// Parse a whole typefile.
 /// This is the root of the nom-part of the parser.
 fn nom_typefile(typefile_definition: &str) -> ParserResult<Typefile> {
-    let result = fold_many0(
-        parse_toplevel_definition,
-        Vec::new,
-        |mut vec, item| {vec.push(item); vec},
-    )(typefile_definition)?;
+    let result = fold_many0(parse_toplevel_definition, Vec::new, |mut vec, item| {
+        vec.push(item);
+        vec
+    })(typefile_definition)?;
     if result.0.is_empty() {
         Ok((result.0, result.1.try_into()?))
     } else {
-        Err(Err::Failure(ParserError::from("found additional characters after parser terminated")))
+        Err(Err::Failure(ParserError::from(
+            "found additional characters after parser terminated",
+        )))
     }
 }
 
 /// Parses any definition at the top level of the file, which are all those that don't have any parents.
 fn parse_toplevel_definition(s: &str) -> ParserResult<ToplevelDefinition> {
-    parse_python_line(s)
+    alt((parse_tool_definition, parse_code_line))(s)
+}
+
+fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
+    let result = tuple((
+        tag("tool"),
+        space1,
+        identifier,
+        tag(":"),
+        space0,
+        line_ending,
+    ))(s)?;
+    Ok((
+        result.0,
+        ToplevelDefinition::Tool(Tool {
+            name: result.1 .2.to_owned(),
+        }),
+    ))
 }
 
 /// Parse a line as a piece of code.
@@ -143,4 +172,17 @@ fn take_line(s: &str) -> ParserResult<&str> {
 
     let newline = take_while(|c| c == '\n' || c == '\r')(line.0)?;
     Ok((newline.0, line.1))
+}
+
+/// Recognise an identifier.
+// Copy-paste from nom::character::complete::alpha1
+fn identifier<T, E: ParseError<T>>(input: T) -> nom::IResult<T, T, E>
+where
+    T: nom::InputTakeAtPosition,
+    <T as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
+{
+    input.split_at_position1_complete(
+        |item| !item.clone().is_alpha() && item.as_char() != '_',
+        ErrorKind::Alpha,
+    )
 }
