@@ -63,7 +63,7 @@ impl<'a> From<&'a str> for ParserError {
 
 #[derive(Default, Eq, PartialEq, Debug, Clone)]
 pub struct Typefile {
-    python_lines: Vec<String>,
+    code_lines: Vec<String>,
     tools: BTreeMap<String, Tool>,
 }
 
@@ -74,7 +74,7 @@ impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
         let mut result = Self::default();
         for toplevel_definition in toplevel_definitions {
             match toplevel_definition {
-                ToplevelDefinition::PythonLine(line) => result.python_lines.push(line),
+                ToplevelDefinition::CodeLine(line) => result.code_lines.push(line),
                 ToplevelDefinition::Tool(tool) => {
                     if let Some(tool) = result.tools.insert(tool.name.clone(), tool) {
                         return Err(Err::Failure(ParserError::from(format!("Tool already exists: {:?}", tool.name))));
@@ -88,7 +88,7 @@ impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
 
 #[derive(Debug, Clone)]
 enum ToplevelDefinition {
-    PythonLine(String),
+    CodeLine(String),
     Tool(Tool),
 }
 
@@ -106,6 +106,8 @@ pub fn parse_typefile_content(typefile_content: &str) -> TypemakeResult<Typefile
     }
 }
 
+/// Parse a whole typefile.
+/// This is the root of the nom-part of the parser.
 fn nom_typefile(typefile_definition: &str) -> ParserResult<Typefile> {
     let result = fold_many0(
         parse_toplevel_definition,
@@ -119,16 +121,20 @@ fn nom_typefile(typefile_definition: &str) -> ParserResult<Typefile> {
     }
 }
 
+/// Parses any definition at the top level of the file, which are all those that don't have any parents.
 fn parse_toplevel_definition(s: &str) -> ParserResult<ToplevelDefinition> {
     parse_python_line(s)
 }
 
-fn parse_python_line(s: &str) -> ParserResult<ToplevelDefinition> {
-    map(take_line, |python_line: &str| {
-        ToplevelDefinition::PythonLine(python_line.to_owned())
+/// Parse a line as a piece of code.
+/// This is the fallback in case the line is of no other type.
+fn parse_code_line(s: &str) -> ParserResult<ToplevelDefinition> {
+    map(take_line, |code_line: &str| {
+        ToplevelDefinition::CodeLine(code_line.to_owned())
     })(s)
 }
 
+/// Take a full line of output, being robust against different line endings as well as a last line without line ending.
 fn take_line(s: &str) -> ParserResult<&str> {
     let line = take_till(|c| c == '\n' || c == '\r')(s)?;
     if line.1.is_empty() {
