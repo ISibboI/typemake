@@ -18,7 +18,7 @@ fn test_few_code_lines() {
 }
 
 #[test]
-fn test_tool_definition() {
+fn test_tool_name_definition() {
     assert_eq!(
         parse_typefile_content("abc\n\ntool mytool:\ndef\nefg"),
         Ok(Typefile {
@@ -29,7 +29,38 @@ fn test_tool_definition() {
             tools: [(
                 "mytool".to_owned(),
                 Tool {
-                    name: "mytool".to_string()
+                    name: "mytool".to_string(),
+                    ..Default::default()
+                }
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn test_duplicate_tool_name_definition() {
+    parse_typefile_content("abc\n\ntool mytool:\ntool mytool:\ndef\nefg").unwrap_err();
+}
+
+#[test]
+fn test_tool_script_definition() {
+    assert_eq!(
+        parse_typefile_content("abc\n\ntool mytool:\n  script: \"ls -l\"\ndef\nefg"),
+        Ok(Typefile {
+            code_lines: vec!["abc", "def", "efg"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            tools: [(
+                "mytool".to_owned(),
+                Tool {
+                    name: "mytool".to_string(),
+                    script: Some("ls -l".to_owned()),
+                    ..Default::default()
                 }
             )]
             .iter()
