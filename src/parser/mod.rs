@@ -4,11 +4,11 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::{take_till, take_while};
 use nom::character::complete::{line_ending, space0, space1};
-use nom::combinator::{fail, map};
+use nom::combinator::{fail, iterator, map};
 use nom::error::{ErrorKind, ParseError};
-use nom::multi::{fold_many0, fold_many1, many0, many1};
+use nom::multi::{fold_many0, many0, many1};
 use nom::sequence::{pair, tuple};
-use nom::{AsChar, Err, InputLength, Parser};
+use nom::{AsChar, Err};
 use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
@@ -163,53 +163,108 @@ fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
         // If the first non-empty line after the header is not indented, the rule has no properties.
         s
     } else {
-        //many0(parse_tool_property(indentation))((s, tool))?.0.0
-        ref_mut_many0(parse_tool_property(indentation), &mut tool)(s)?.0
+        let mut tool_property_iterator = iterator(s, parse_tool_property(indentation));
+        for tool_property in &mut tool_property_iterator {
+            tool_property(&mut tool);
+        }
+        tool_property_iterator.finish()?.0
     };
+
+    // TODO assert unindented line or end of file after tool definition, to ensure that indentation errors are discovered correctly.
 
     Ok((s, ToplevelDefinition::Tool(tool)))
 }
 
 /// Parses a property of a tool.
-fn parse_tool_property<'a>(
-    indentation: &'a str,
-) -> impl for<'tool> Fn(&'a str, &'tool mut Tool) -> ParserResult<'a, ()> {
-    move |s: &'a str, tool: &mut Tool| {
+fn parse_tool_property<'indentation, 'input>(
+    indentation: &'indentation str,
+) -> impl 'indentation + Fn(&'input str) -> ParserResult<'input, ParseToolSetter<'input>>
+where
+    'input: 'indentation,
+{
+    move |s: &str| {
         // Skip empty lines and check for indentation. If there is none, the tool definition is done.
         let (s, _) = pair(many0(line_ending), tag(indentation))(s)?;
 
         // Parse specific property.
-        let (s, _) = ref_mut_alt((parse_tool_property_script(indentation), fail), tool)(s)?;
-        Ok((s, ()))
+        alt((
+            parse_specific_tool_property("script", indentation, |tool, value| {
+                tool.script = Some(value)
+            }),
+            fail,
+        ))(s)
     }
 }
 
-/// Parses the script property of a tool.
-fn parse_tool_property_script<'a>(indentation: &'a str) -> impl for<'tool> FnMut(&'a str, &'tool mut Tool) -> ParserResult<'a, ()> {
-    move |s: &'a str, tool: &mut Tool| {
-        // Parse script line.
-        let (s, result) = tuple((tag("script:"), space0, take_line))(s)?;
-        tool.script = Some(result.2.to_owned());
+pub type ParseToolSetter<'input> = Box<dyn 'input + FnOnce(&mut Tool)>;
 
-        Ok((s, ()))
+/// Parses the script property of a tool.
+fn parse_specific_tool_property<'indentation, 'property_name, 'tool_assigner, 'input>(
+    property_name: &'property_name str,
+    indentation: &'indentation str,
+    tool_assigner: impl 'indentation + 'input + FnMut(&mut Tool, String) + Clone,
+) -> impl 'indentation + FnMut(&'input str) -> ParserResult<'input, ParseToolSetter<'input>>
+where
+    'input: 'indentation,
+    'property_name: 'indentation,
+{
+    move |s: &str| {
+        // Parse script line.
+        let (s, (_, _, _, first_line)) =
+            tuple((tag(property_name), tag(":"), space0, take_line_allow_empty))(s)?;
+        let mut result = String::from(first_line);
+
+        let s = if let Some(deep_indentation) = check_for_deeper_indentation(s, indentation) {
+            // TODO allow empty lines to be unindented/wrongly indented.
+            let (s, lines) = many1(pair(tag(deep_indentation), take_line_disallow_empty))(s)?;
+            for (_, line) in lines {
+                result.push('\n');
+                result.push_str(line);
+            }
+            s
+        } else {
+            s
+        };
+
+        let result = String::from(result.trim());
+        if result.is_empty() {
+            return fail(s); // TODO return our error type with proper message.
+        }
+
+        let mut tool_assigner = tool_assigner.clone();
+        Ok((
+            s,
+            Box::new(move |tool| {
+                tool_assigner(tool, result);
+            }),
+        ))
     }
 }
 
 /// Parse a line as a piece of code.
 /// This is the fallback in case the line is of no other type.
 fn parse_code_line(s: &str) -> ParserResult<ToplevelDefinition> {
-    map(take_line, |code_line: &str| {
+    map(take_line_disallow_empty, |code_line: &str| {
         ToplevelDefinition::CodeLine(code_line.to_owned())
     })(s)
 }
 
 /// Take a full line of output, being robust against different line endings as well as a last line without line ending.
-fn take_line(s: &str) -> ParserResult<&str> {
+/// If the line taken is empty, return an error.
+fn take_line_disallow_empty(s: &str) -> ParserResult<&str> {
     let line = take_till(|c| c == '\n' || c == '\r')(s)?;
     if line.1.is_empty() {
         return fail(line.0);
     }
 
+    let newline = take_while(|c| c == '\n' || c == '\r')(line.0)?;
+    Ok((newline.0, line.1))
+}
+
+/// Take a full line of output, being robust against different line endings as well as a last line without line ending.
+/// If the line taken is empty, just return an empty `str`.
+fn take_line_allow_empty(s: &str) -> ParserResult<&str> {
+    let line = take_till(|c| c == '\n' || c == '\r')(s)?;
     let newline = take_while(|c| c == '\n' || c == '\r')(line.0)?;
     Ok((newline.0, line.1))
 }
@@ -227,173 +282,19 @@ where
     )
 }
 
-/// Applies a parser until it fails while passing through a value.
-/// TODO
-pub fn pass_through_many0<Input, Output, IntermediateOutput, Error, ParserType>(
-    mut parser: ParserType,
-    initial_value: Output,
-) -> impl FnOnce(Input) -> nom::IResult<Input, Output, Error>
-where
-    Input: Clone + InputLength,
-    Error: ParseError<Input>,
-    ParserType: FnMut(Input, Output) -> (nom::IResult<Input, IntermediateOutput, Error>, Output),
-{
-    move |mut input: Input| {
-        let mut current_value = initial_value;
-
-        loop {
-            match parser(input.clone(), current_value) {
-                (Ok((processed_input, _)), processed_value) => {
-                    // infinite loop check: the parser must always consume
-                    if processed_input.input_len() == input.input_len() {
-                        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Many0)));
-                    }
-
-                    input = processed_input;
-                    current_value = processed_value;
-                }
-                (Err(Err::Error(_)), processed_value) => {
-                    return Ok((input, processed_value));
-                }
-                (Err(e), _) => {
-                    return Err(e);
-                }
-            }
+/// Check if the current line in `s` is indented by at least `shallow_indentation` plus at least one space or tab character.
+/// If yes, return the complete indentation of the line, including `shallow_indentation`, if no, return `None`.
+fn check_for_deeper_indentation<'input, 'indentation>(
+    s: &'input str,
+    shallow_indentation: &'indentation str,
+) -> Option<&'input str> {
+    if let Ok((_, deep_indentation)) = space0::<_, ParserError>(s) {
+        if deep_indentation.starts_with(shallow_indentation)
+            && deep_indentation.len() > shallow_indentation.len()
+        {
+            return Some(deep_indentation);
         }
     }
+
+    None
 }
-
-/// Applies a parser until it fails while passing it a mutable reference.
-/// TODO
-pub fn ref_mut_many0<'output, Input, Output, IntermediateOutput, Error, ParserType>(
-    mut parser: ParserType,
-    output: &'output mut Output,
-) -> impl FnOnce(Input) -> nom::IResult<Input, &'output mut Output, Error>
-where
-    Input: Clone + InputLength,
-    Error: ParseError<Input>,
-    ParserType:
-        for<'a> FnMut(Input, &'a mut Output) -> nom::IResult<Input, IntermediateOutput, Error>,
-{
-    move |mut input: Input| {
-        loop {
-            match parser(input.clone(), output) {
-                Ok((processed_input, _)) => {
-                    // infinite loop check: the parser must always consume
-                    if processed_input.input_len() == input.input_len() {
-                        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Many0)));
-                    }
-
-                    input = processed_input;
-                }
-                Err(Err::Error(_)) => {
-                    return Ok((input, output));
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-    }
-}
-
-/// Tests a list of parsers one by one until one succeeds.
-/// It passes a mutable reference to each parser.
-/// TODO
-pub fn ref_mut_alt<
-    'output,
-    Input: Clone,
-    Output,
-    IntermediateOutput,
-    Error: ParseError<Input>,
-    List: for<'a> RefMutAlt<Input, &'a mut Output, IntermediateOutput, Error>,
->(
-    mut l: List,
-    output: &'output mut Output,
-) -> impl FnOnce(Input) -> nom::IResult<Input, &'output mut Output, Error> {
-    move |s: Input| {
-        let ((s, _), _) = l.ref_mut_choice(s, output)?;
-        Ok((s, output))
-    }
-}
-
-
-// TODO make RefMutParser trait to implement this more easily
-pub trait RefMutAlt<
-    Input, Output, IntermediateOutput, Error
-> {
-    fn ref_mut_choice(&mut self, input: Input, output: &mut Output) -> nom::IResult<Input, IntermediateOutput, Error>;
-}
-
-macro_rules! succ (
-  (0, $submac:ident ! ($($rest:tt)*)) => ($submac!(1, $($rest)*));
-  (1, $submac:ident ! ($($rest:tt)*)) => ($submac!(2, $($rest)*));
-  (2, $submac:ident ! ($($rest:tt)*)) => ($submac!(3, $($rest)*));
-  (3, $submac:ident ! ($($rest:tt)*)) => ($submac!(4, $($rest)*));
-  (4, $submac:ident ! ($($rest:tt)*)) => ($submac!(5, $($rest)*));
-  (5, $submac:ident ! ($($rest:tt)*)) => ($submac!(6, $($rest)*));
-  (6, $submac:ident ! ($($rest:tt)*)) => ($submac!(7, $($rest)*));
-  (7, $submac:ident ! ($($rest:tt)*)) => ($submac!(8, $($rest)*));
-  (8, $submac:ident ! ($($rest:tt)*)) => ($submac!(9, $($rest)*));
-  (9, $submac:ident ! ($($rest:tt)*)) => ($submac!(10, $($rest)*));
-  (10, $submac:ident ! ($($rest:tt)*)) => ($submac!(11, $($rest)*));
-  (11, $submac:ident ! ($($rest:tt)*)) => ($submac!(12, $($rest)*));
-  (12, $submac:ident ! ($($rest:tt)*)) => ($submac!(13, $($rest)*));
-  (13, $submac:ident ! ($($rest:tt)*)) => ($submac!(14, $($rest)*));
-  (14, $submac:ident ! ($($rest:tt)*)) => ($submac!(15, $($rest)*));
-  (15, $submac:ident ! ($($rest:tt)*)) => ($submac!(16, $($rest)*));
-  (16, $submac:ident ! ($($rest:tt)*)) => ($submac!(17, $($rest)*));
-  (17, $submac:ident ! ($($rest:tt)*)) => ($submac!(18, $($rest)*));
-  (18, $submac:ident ! ($($rest:tt)*)) => ($submac!(19, $($rest)*));
-  (19, $submac:ident ! ($($rest:tt)*)) => ($submac!(20, $($rest)*));
-  (20, $submac:ident ! ($($rest:tt)*)) => ($submac!(21, $($rest)*));
-);
-
-macro_rules! ref_mut_alt_trait(
-  ($first:ident $second:ident $($id: ident)+) => (
-    ref_mut_alt_trait!(__impl $first $second; $($id)+);
-  );
-  (__impl $($current:ident)*; $head:ident $($id: ident)+) => (
-    ref_mut_alt_trait_impl!($($current)*);
-
-    ref_mut_alt_trait!(__impl $($current)* $head; $($id)+);
-  );
-  (__impl $($current:ident)*; $head:ident) => (
-    ref_mut_alt_trait_impl!($($current)*);
-    ref_mut_alt_trait_impl!($($current)* $head);
-  );
-);
-
-macro_rules! ref_mut_alt_trait_impl(
-  ($($id:ident)+) => (
-    impl<
-      Input: Clone, Output, IntermediateOutput, Error: ParseError<Input>,
-      $($id: Parser<Input, Output, Error>),+
-    > RefMutAlt<Input, Output, IntermediateOutput, Error> for ( $($id),+ ) {
-
-      fn ref_mut_choice(&mut self, input: Input, output: &mut Output) -> IResult<Input, IntermediateOutput, Error> {
-        match self.0.parse(input.clone()) {
-          Err(Err::Error(e)) => ref_mut_alt_trait_inner!(1, self, input, output, e, $($id)+),
-          res => res,
-        }
-      }
-    }
-  );
-);
-
-macro_rules! ref_mut_alt_trait_inner(
-  ($it:tt, $self:expr, $input:expr, $output:expr, $err:expr, $head:ident $($id:ident)+) => (
-    match $self.$it.parse($input.clone()) {
-      Err(Err::Error(e)) => {
-        let err = $err.or(e);
-        succ!($it, ref_mut_alt_trait_inner!($self, $input, err, $($id)+))
-      }
-      res => res,
-    }
-  );
-  ($it:tt, $self:expr, $input:expr, $err:expr, $head:ident) => (
-    Err(Err::Error(Error::append($input, ErrorKind::Alt, $err)))
-  );
-);
-
-ref_mut_alt_trait!(A B C D E F G H I J K L M N O P Q R S T U);

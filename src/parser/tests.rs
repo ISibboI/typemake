@@ -59,7 +59,7 @@ fn test_tool_script_definition() {
                 "mytool".to_owned(),
                 Tool {
                     name: "mytool".to_string(),
-                    script: Some("ls -l".to_owned()),
+                    script: Some("\"ls -l\"".to_owned()),
                     ..Default::default()
                 }
             )]
@@ -69,4 +69,66 @@ fn test_tool_script_definition() {
             ..Default::default()
         })
     );
+}
+
+#[test]
+fn test_tool_multiline_script_definition() {
+    assert_eq!(
+        parse_typefile_content(
+            "abc\n\ntool mytool:\n  script: \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
+        ),
+        Ok(Typefile {
+            code_lines: vec!["abc", "def", "efg"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            tools: [(
+                "mytool".to_owned(),
+                Tool {
+                    name: "mytool".to_string(),
+                    script: Some("\"\"\"ls -l\npwd\"\"\"".to_owned()),
+                    ..Default::default()
+                }
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn test_tool_multiline_script_definition_start_second_line() {
+    assert_eq!(
+        parse_typefile_content(
+            "abc\n\ntool mytool:\n  script: \n    \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
+        ),
+        Ok(Typefile {
+            code_lines: vec!["abc", "def", "efg"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            tools: [(
+                "mytool".to_owned(),
+                Tool {
+                    name: "mytool".to_string(),
+                    script: Some("\"\"\"ls -l\npwd\"\"\"".to_owned()),
+                    ..Default::default()
+                }
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn test_wrong_tool_property_indentation() {
+    parse_typefile_content(
+        "abc\n\ntool mytool:\n  script:\n    script\n   missing-indentation\n    blub\ndef\nefg",
+    )
+    .unwrap_err();
 }
