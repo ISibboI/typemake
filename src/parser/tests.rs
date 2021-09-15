@@ -59,7 +59,7 @@ fn test_tool_script_definition() {
                 "mytool".to_owned(),
                 Tool {
                     name: "mytool".to_string(),
-                    script: Some("\"ls -l\"".to_owned()),
+                    script: "\"ls -l\"".into(),
                     ..Default::default()
                 }
             )]
@@ -86,7 +86,7 @@ fn test_tool_multiline_script_definition() {
                 "mytool".to_owned(),
                 Tool {
                     name: "mytool".to_string(),
-                    script: Some("\"\"\"ls -l\npwd\"\"\"".to_owned()),
+                    script: "\"\"\"ls -l\npwd\"\"\"".into(),
                     ..Default::default()
                 }
             )]
@@ -113,7 +113,7 @@ fn test_tool_multiline_script_definition_start_second_line() {
                 "mytool".to_owned(),
                 Tool {
                     name: "mytool".to_string(),
-                    script: Some("\"\"\"ls -l\npwd\"\"\"".to_owned()),
+                    script: "\"\"\"ls -l\npwd\"\"\"".into(),
                     ..Default::default()
                 }
             )]

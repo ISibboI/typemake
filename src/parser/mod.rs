@@ -1,5 +1,5 @@
 use crate::error::{TypemakeError, TypemakeResult};
-use crate::workflow::Tool;
+use crate::workflow::{Tool, ToolProperty};
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::{take_till, take_while};
@@ -19,6 +19,7 @@ use std::path::Path;
 mod tests;
 
 pub type ParserResult<'a, T> = Result<(&'a str, T), nom::Err<ParserError>>;
+type ParserResultWithoutInput<T> = Result<T, nom::Err<ParserError>>;
 
 #[derive(Debug, Eq, Clone, PartialEq, Default)]
 pub struct ParserError {
@@ -165,7 +166,7 @@ fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
     } else {
         let mut tool_property_iterator = iterator(s, parse_tool_property(indentation));
         for tool_property in &mut tool_property_iterator {
-            tool_property(&mut tool);
+            tool_property(&mut tool)?;
         }
         tool_property_iterator.finish()?.0
     };
@@ -180,12 +181,13 @@ fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
     Ok((s, ToplevelDefinition::Tool(tool)))
 }
 
+// fn tool_assigner<'a, PreliminaryType, FinalType>()
+
 /// Parses a property of a tool.
-fn parse_tool_property<'indentation, 'input>(
+fn parse_tool_property<'indentation, 'result>(
     indentation: &'indentation str,
-) -> impl 'indentation + Fn(&'input str) -> ParserResult<'input, ParseToolSetter<'input>>
-where
-    'input: 'indentation,
+) -> impl 'result + for<'a> Fn(&'a str) -> ParserResult<'a, ParseToolSetter<'result>> where
+'indentation: 'result,
 {
     move |s: &str| {
         // Skip whitespace-only lines and check for indentation. If there is none, the tool definition is done.
@@ -193,25 +195,23 @@ where
 
         // Parse specific property.
         alt((
-            parse_specific_tool_property("script", indentation, |tool, value| {
-                tool.script = Some(value)
-            }),
+            parse_specific_tool_property("script", indentation, |tool| {&mut tool.script}),
             fail,
         ))(s)
     }
 }
 
-pub type ParseToolSetter<'input> = Box<dyn 'input + FnOnce(&mut Tool)>;
+pub type ParseToolSetter<'a> = Box<dyn 'a + FnOnce(&mut Tool) -> ParserResultWithoutInput<()>>;
 
 /// Parses the script property of a tool.
-fn parse_specific_tool_property<'indentation, 'property_name, 'tool_assigner, 'input>(
+fn parse_specific_tool_property<'indentation, 'property_name, 'input, 'result, ToolPropertyPreliminaryType: PartialEq, ToolPropertyFinalType: PartialEq>(
     property_name: &'property_name str,
     indentation: &'indentation str,
-    tool_assigner: impl 'indentation + 'input + FnMut(&mut Tool, String) + Clone,
-) -> impl 'indentation + FnMut(&'input str) -> ParserResult<'input, ParseToolSetter<'input>>
+    tool_property_accessor: impl 'result + for<'tool_assigner> Fn(&'tool_assigner mut Tool) -> &'tool_assigner mut ToolProperty<ToolPropertyPreliminaryType, ToolPropertyFinalType> + Clone,
+) -> impl 'result + for<'a> FnMut(&'a str) -> ParserResult<'a, ParseToolSetter<'result>>
 where
-    'input: 'indentation,
-    'property_name: 'indentation,
+    'property_name: 'result,
+    'indentation: 'result,
 {
     move |s: &str| {
         // Parse script line.
@@ -241,14 +241,19 @@ where
 
         let result = String::from(result.trim());
         if result.is_empty() {
-            return Err(nom::Err::Failure(ParserError::from(format!("Found an empty-valued script property {:?}", property_name))));
+            return Err(nom::Err::Failure(ParserError::from(format!("Found an empty-valued script property {:?}.", property_name))));
         }
 
-        let mut tool_assigner = tool_assigner.clone();
+        let tool_property_accessor = tool_property_accessor.clone();
         Ok((
             s,
             Box::new(move |tool| {
-                tool_assigner(tool, result);
+                let tool_property = tool_property_accessor(tool);
+                if !tool_property.is_empty() {
+                    return Err(nom::Err::Failure(ParserError::from(format!("Found a duplicate definition of {:?} within the same tool.", property_name))));
+                }
+                *tool_property = result.into();
+                Ok(())
             }),
         ))
     }

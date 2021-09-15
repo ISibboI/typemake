@@ -1,4 +1,5 @@
 #![allow(clippy::useless_format)]
+#![warn(missing_docs)]
 
 use crate::error::TypemakeResult;
 use crate::typemake::run_typemake_from_cli;
