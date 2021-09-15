@@ -241,7 +241,7 @@ where
 
         let result = String::from(result.trim());
         if result.is_empty() {
-            return fail(s); // TODO return our error type with proper message.
+            return Err(nom::Err::Failure(ParserError::from(format!("Found an empty-valued script property {:?}", property_name))));
         }
 
         let mut tool_assigner = tool_assigner.clone();
