@@ -1,3 +1,5 @@
+#![allow(clippy::useless_format)]
+
 use crate::error::TypemakeResult;
 use crate::typemake::run_typemake_from_cli;
 use clap::Clap;

@@ -170,7 +170,12 @@ fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
         tool_property_iterator.finish()?.0
     };
 
-    // TODO assert unindented line or end of file after tool definition, to ensure that indentation errors are discovered correctly.
+    // assert unindented line or end of file after tool definition, to ensure that indentation errors are discovered correctly.
+    let (s, _) = many0(line_ending)(s)?;
+    if !s.is_empty() && (s.starts_with('\t') || s.starts_with(' ')) {
+        // Found indented line after end of tool definition.
+        return Err(nom::Err::Failure(ParserError::from(format!("Found an indented line after the end of a tool definition. This means that either after the tool definition, there is an indented line that should not be indented, or the indentation of the tool definition is inconsistent."))));
+    }
 
     Ok((s, ToplevelDefinition::Tool(tool)))
 }
@@ -183,8 +188,8 @@ where
     'input: 'indentation,
 {
     move |s: &str| {
-        // Skip empty lines and check for indentation. If there is none, the tool definition is done.
-        let (s, _) = pair(many0(line_ending), tag(indentation))(s)?;
+        // Skip whitespace-only lines and check for indentation. If there is none, the tool definition is done.
+        let (s, _) = pair(many0(pair(space0, many1(line_ending))), tag(indentation))(s)?;
 
         // Parse specific property.
         alt((
@@ -215,9 +220,17 @@ where
         let mut result = String::from(first_line);
 
         let s = if let Some(deep_indentation) = check_for_deeper_indentation(s, indentation) {
-            // TODO allow empty lines to be unindented/wrongly indented.
-            let (s, lines) = many1(pair(tag(deep_indentation), take_line_disallow_empty))(s)?;
+            // Collect lines that are either whitespace-only or correctly indented.
+            let (s, lines) = many0(alt((
+                pair(tag(deep_indentation), take_line_disallow_empty),
+                map(pair(space0, many1(line_ending)), |_| ("", "")),
+            )))(s)?;
             for (_, line) in lines {
+                if line.trim().is_empty() {
+                    // Skip empty lines.
+                    continue;
+                }
+
                 result.push('\n');
                 result.push_str(line);
             }
