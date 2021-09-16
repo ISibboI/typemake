@@ -12,9 +12,16 @@ pub struct PythonInterpreter;
 
 impl Interpreter for PythonInterpreter {
     fn run(&mut self, script: &str) -> TypemakeResult<()> {
-        Python::with_gil(|py| py.run(script, None, None))
-            .map_err(PythonInterpreterError::from)
-            .map_err(TypemakeError::from)
+        Python::with_gil(|py| {
+            py.run(script, None, None)?;
+            py.run(
+                "import sys\nsys.stdout.flush()\nsys.stderr.flush()",
+                None,
+                None,
+            )
+        })
+        .map_err(PythonInterpreterError::from)
+        .map_err(TypemakeError::from)
     }
 
     fn version(&self) -> TypemakeResult<String> {
