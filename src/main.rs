@@ -2,6 +2,7 @@
 
 #![allow(clippy::useless_format)]
 #![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
 
 use crate::error::TypemakeResult;
 use crate::typemake::run_typemake_from_cli;
@@ -13,16 +14,22 @@ use simplelog::{ColorChoice, TermLogger, TerminalMode};
 
 mod cli;
 mod error;
+mod interpreter;
 mod parser;
 mod typemake;
 mod workflow;
 
-fn main() {
+/// Helper main function that executes the actual main function (`error_main`) and formats any errors it returns.
+fn main() -> Result<(), ()> {
     if let Err(error) = error_main() {
         error!("Error:\n{}", error.to_string());
+        Err(())
+    } else {
+        Ok(())
     }
 }
 
+/// The actual main function that is allowed to return an error, which is then properly formatted by the `main` function.
 fn error_main() -> TypemakeResult<()> {
     // Init logging
     TermLogger::init(

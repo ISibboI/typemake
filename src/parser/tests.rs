@@ -3,29 +3,26 @@ use crate::workflow::Tool;
 
 #[test]
 fn test_empty_typefile() {
-    assert_eq!(parse_typefile_content(""), Ok(Typefile::default()));
+    assert_eq!(parse_typefile_content("").unwrap(), Typefile::default());
 }
 
 #[test]
 fn test_few_code_lines() {
     assert_eq!(
-        parse_typefile_content("abc\ndef"),
-        Ok(Typefile {
-            code_lines: vec!["abc", "def"].into_iter().map(String::from).collect(),
+        parse_typefile_content("abc\ndef").unwrap(),
+        Typefile {
+            code_lines: "abc\ndef\n".into(),
             ..Default::default()
-        })
+        }
     );
 }
 
 #[test]
 fn test_tool_name_definition() {
     assert_eq!(
-        parse_typefile_content("abc\n\ntool mytool:\ndef\nefg"),
-        Ok(Typefile {
-            code_lines: vec!["abc", "def", "efg"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+        parse_typefile_content("abc\n\ntool mytool:\ndef\nefg").unwrap(),
+        Typefile {
+            code_lines: "abc\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -37,7 +34,7 @@ fn test_tool_name_definition() {
             .cloned()
             .collect(),
             ..Default::default()
-        })
+        }
     );
 }
 
@@ -49,12 +46,9 @@ fn test_duplicate_tool_name_definition() {
 #[test]
 fn test_tool_script_definition() {
     assert_eq!(
-        parse_typefile_content("abc\n\ntool mytool:\n  script: \"ls -l\"\ndef\nefg"),
-        Ok(Typefile {
-            code_lines: vec!["abc", "def", "efg"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+        parse_typefile_content("abc\n\ntool mytool:\n  interpreter: \"ls -l\"\ndef\nefg").unwrap(),
+        Typefile {
+            code_lines: "abc\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -67,7 +61,7 @@ fn test_tool_script_definition() {
             .cloned()
             .collect(),
             ..Default::default()
-        })
+        }
     );
 }
 
@@ -75,13 +69,11 @@ fn test_tool_script_definition() {
 fn test_tool_multiline_script_definition() {
     assert_eq!(
         parse_typefile_content(
-            "abc\n\ntool mytool:\n  script: \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
-        ),
-        Ok(Typefile {
-            code_lines: vec!["abc", "def", "efg"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            "abc\n\ntool mytool:\n  interpreter: \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
+        )
+        .unwrap(),
+        Typefile {
+            code_lines: "abc\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -94,7 +86,7 @@ fn test_tool_multiline_script_definition() {
             .cloned()
             .collect(),
             ..Default::default()
-        })
+        }
     );
 }
 
@@ -102,13 +94,11 @@ fn test_tool_multiline_script_definition() {
 fn test_tool_multiline_script_definition_start_second_line() {
     assert_eq!(
         parse_typefile_content(
-            "abc\n\ntool mytool:\n  script: \n    \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
-        ),
-        Ok(Typefile {
-            code_lines: vec!["abc", "def", "efg"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            "abc\n\ntool mytool:\n  interpreter: \n    \"\"\"ls -l\n    pwd\"\"\"\ndef\nefg"
+        )
+        .unwrap(),
+        Typefile {
+            code_lines: "abc\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -121,14 +111,25 @@ fn test_tool_multiline_script_definition_start_second_line() {
             .cloned()
             .collect(),
             ..Default::default()
-        })
+        }
+    );
+}
+
+#[test]
+fn test_code_line_indentation() {
+    assert_eq!(
+        parse_typefile_content("abc\n def \n  efg\nfgh\n\tghi").unwrap(),
+        Typefile {
+            code_lines: "abc\n def \n  efg\nfgh\n\tghi\n".into(),
+            ..Default::default()
+        }
     );
 }
 
 #[test]
 fn test_wrong_tool_property_indentation() {
     parse_typefile_content(
-        "abc\n\ntool mytool:\n  script:\n    script\n   missing-indentation\n    blub\ndef\nefg",
+        "abc\n\ntool mytool:\n  interpreter:\n    interpreter\n   missing-indentation\n    blub\ndef\nefg",
     )
     .unwrap_err();
 }

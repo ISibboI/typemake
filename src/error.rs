@@ -1,30 +1,27 @@
+//! The error types of typemake.
+
+use crate::interpreter::InterpreterError;
 use nom::{Err, Needed};
 use thiserror::Error;
 
+/// An alias of `std::result::Result` with `TypemakeError` as error type.
 pub type TypemakeResult<T> = Result<T, TypemakeError>;
 
+/// The main error type of typemake, wrapping all error types that may occur.
 #[derive(Error, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum TypemakeError {
     #[error("could not parse typefile")]
-    ParseError(String),
+    /// An error that occurred in the typefile parser.
+    ParserError(String),
 
     #[error("I/O error")]
+    /// An I/O error.
     IoError(#[from] ::std::io::Error),
-}
 
-impl PartialEq for TypemakeError {
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            TypemakeError::ParseError(error) => {
-                if let TypemakeError::ParseError(other_error) = other {
-                    error == other_error
-                } else {
-                    false
-                }
-            }
-            TypemakeError::IoError(_) => false,
-        }
-    }
+    #[error("Error while interpreting script")]
+    /// An error that occurred in the script interpreter.
+    InterpreterError(#[from] InterpreterError),
 }
 
 impl<ErrorType: ToString> From<nom::Err<ErrorType>> for TypemakeError {
@@ -32,14 +29,14 @@ impl<ErrorType: ToString> From<nom::Err<ErrorType>> for TypemakeError {
         match err {
             Err::Incomplete(needed) => match needed {
                 Needed::Unknown => {
-                    Self::ParseError("missing an unknown number of characters".to_owned())
+                    Self::ParserError("missing an unknown number of characters".to_owned())
                 }
-                Needed::Size(size) => Self::ParseError(format!("missing {} characters", size)),
+                Needed::Size(size) => Self::ParserError(format!("missing {} characters", size)),
             },
             Err::Error(e) => {
-                Self::ParseError(format!("parser had a recoverable error: {}", e.to_string()))
+                Self::ParserError(format!("parser had a recoverable error: {}", e.to_string()))
             }
-            Err::Failure(e) => Self::ParseError(format!(
+            Err::Failure(e) => Self::ParserError(format!(
                 "parser had an unrecoverable error: {}",
                 e.to_string()
             )),

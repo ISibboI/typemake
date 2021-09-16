@@ -1,8 +1,18 @@
+//! Types describing a typemake workflow.
+
+/// The stage of a value of a tool property.
+///
+/// The value of a tool property is computed using the script interpreter, but its evaluation is allowed to fail.
+/// Such a failed state needs to be captured to indicate that the tool is not usable yet in the given configuration.
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum ToolPropertyStage<PreliminaryType, FinalType = PreliminaryType> {
+    /// The property is not defined on the tool.
     Empty,
+    /// The property is defined on the tool, but no attempt at evaluation was made up to now.
     String,
+    /// The property was evaluated, but the evaluation failed completely or partially.
     Preliminary(PreliminaryType),
+    /// The property was successfully evaluated.
     Final(FinalType),
 }
 
@@ -12,9 +22,13 @@ impl<S, T> Default for ToolPropertyStage<S, T> {
     }
 }
 
+/// A property value of a tool.
 #[derive(Default, Eq, PartialEq, Debug, Clone)]
 pub struct ToolProperty<PreliminaryType, FinalType = PreliminaryType> {
+    /// The original string that is used to define the value in the typefile.
     string_value: String,
+    /// The value of the tool property as computed by the script interpreter.
+    /// This field captures all possible stages of evaluation.
     value_stage: ToolPropertyStage<PreliminaryType, FinalType>,
 }
 
@@ -30,6 +44,7 @@ impl<PreliminaryType, FinalType, T: Into<String>> From<T>
 }
 
 impl<PreliminaryType, FinalType> ToolProperty<PreliminaryType, FinalType> {
+    /// Returns true if the tool property value is empty, i.e. not set.
     pub fn is_empty(&self) -> bool
     where
         PreliminaryType: PartialEq,
@@ -47,7 +62,7 @@ pub struct Tool {
     /// Each tool has a unique name.
     pub name: String,
 
-    /// The script executing the tool.
-    /// Typically this would be a bash script executing another program or a set of programs.
+    /// The interpreter executing the tool.
+    /// Typically this would be a bash interpreter executing another program or a set of programs.
     pub script: ToolProperty<String>,
 }

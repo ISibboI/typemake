@@ -1,3 +1,5 @@
+//! The parser for typemake files.
+
 use crate::error::{TypemakeError, TypemakeResult};
 use crate::workflow::{Tool, ToolProperty};
 use nom::branch::alt;
@@ -18,12 +20,20 @@ use std::path::Path;
 #[cfg(test)]
 mod tests;
 
+/// The result type used by the parser, that carries the modified input in the `Ok()` variant.
 pub type ParserResult<'a, T> = Result<(&'a str, T), nom::Err<ParserError>>;
+/// The result type used by the parser, without carrying the modified input.
 type ParserResultWithoutInput<T> = Result<T, nom::Err<ParserError>>;
 
+/// The error type of the parser.
+/// It collects all nom-errors that occurred,
+/// but since these are hard to interpret without looking at the code,
+/// `message` gives a human-readable representation of the error.
 #[derive(Debug, Eq, Clone, PartialEq, Default)]
 pub struct ParserError {
+    /// The nom-errors that lead up to this error.
     nom_errors: Vec<(String, ErrorKind)>,
+    /// A human-readable representation of the error.
     message: String,
 }
 
@@ -70,10 +80,13 @@ impl<'a> From<&'a str> for ParserError {
     }
 }
 
+/// A parsed typefile.
 #[derive(Default, Eq, PartialEq, Debug, Clone)]
 pub struct Typefile {
-    code_lines: Vec<String>,
-    tools: BTreeMap<String, Tool>,
+    /// Everything that is not a structure defined by typemake is collected here line-by-line, to be used as "initialising" code for the typefile.
+    pub code_lines: String,
+    /// The tool definitions in the typefile.
+    pub tools: BTreeMap<String, Tool>,
 }
 
 impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
@@ -83,7 +96,10 @@ impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
         let mut result = Self::default();
         for toplevel_definition in toplevel_definitions {
             match toplevel_definition {
-                ToplevelDefinition::CodeLine(line) => result.code_lines.push(line),
+                ToplevelDefinition::CodeLine(line) => {
+                    result.code_lines.push_str(&line);
+                    result.code_lines.push('\n')
+                }
                 ToplevelDefinition::Tool(tool) => {
                     if let Some(tool) = result.tools.insert(tool.name.clone(), tool) {
                         return Err(Err::Failure(ParserError::from(format!(
@@ -98,12 +114,16 @@ impl<'a> TryFrom<Vec<ToplevelDefinition>> for Typefile {
     }
 }
 
+/// A definition on the top level of a typefile.
 #[derive(Debug, Clone)]
 enum ToplevelDefinition {
+    /// A simple line of code without further meaning to typemake.
     CodeLine(String),
+    /// A tool definition.
     Tool(Tool),
 }
 
+/// Parse the typefile at the given path.
 pub fn parse_typefile<P: AsRef<Path> + std::fmt::Debug + Clone>(
     typefile_path: P,
 ) -> TypemakeResult<Typefile> {
@@ -111,10 +131,11 @@ pub fn parse_typefile<P: AsRef<Path> + std::fmt::Debug + Clone>(
     parse_typefile_content(&typefile_content)
 }
 
+/// Parse the contents of a typefile (given as `&str`).
 pub fn parse_typefile_content(typefile_content: &str) -> TypemakeResult<Typefile> {
     match nom_typefile(typefile_content) {
         Ok((_, result)) => Ok(result),
-        Err(err) => Err(TypemakeError::ParseError(err.to_string())),
+        Err(err) => Err(TypemakeError::ParserError(err.to_string())),
     }
 }
 
@@ -196,15 +217,16 @@ where
 
         // Parse specific property.
         alt((
-            parse_specific_tool_property("script", indentation, |tool| &mut tool.script),
+            parse_specific_tool_property("interpreter", indentation, |tool| &mut tool.script),
             fail,
         ))(s)
     }
 }
 
-pub type ParseToolSetter<'a> = Box<dyn 'a + FnOnce(&mut Tool) -> ParserResultWithoutInput<()>>;
+/// A pointer to a function that sets a property value of a tool.
+type ParseToolSetter<'a> = Box<dyn 'a + FnOnce(&mut Tool) -> ParserResultWithoutInput<()>>;
 
-/// Parses the script property of a tool.
+/// Parses the interpreter property of a tool.
 fn parse_specific_tool_property<
     'indentation,
     'property_name,
@@ -222,7 +244,7 @@ where
     'indentation: 'result,
 {
     move |s: &str| {
-        // Parse script line.
+        // Parse interpreter line.
         let (s, (_, _, _, first_line)) =
             tuple((tag(property_name), tag(":"), space0, take_line_allow_empty))(s)?;
         let mut result = String::from(first_line);
@@ -250,7 +272,7 @@ where
         let result = String::from(result.trim());
         if result.is_empty() {
             return Err(nom::Err::Failure(ParserError::from(format!(
-                "Found an empty-valued script property {:?}.",
+                "Found an empty-valued interpreter property {:?}.",
                 property_name
             ))));
         }
