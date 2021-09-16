@@ -186,8 +186,9 @@ fn parse_tool_definition(s: &str) -> ParserResult<ToplevelDefinition> {
 /// Parses a property of a tool.
 fn parse_tool_property<'indentation, 'result>(
     indentation: &'indentation str,
-) -> impl 'result + for<'a> Fn(&'a str) -> ParserResult<'a, ParseToolSetter<'result>> where
-'indentation: 'result,
+) -> impl 'result + for<'a> Fn(&'a str) -> ParserResult<'a, ParseToolSetter<'result>>
+where
+    'indentation: 'result,
 {
     move |s: &str| {
         // Skip whitespace-only lines and check for indentation. If there is none, the tool definition is done.
@@ -195,7 +196,7 @@ fn parse_tool_property<'indentation, 'result>(
 
         // Parse specific property.
         alt((
-            parse_specific_tool_property("script", indentation, |tool| {&mut tool.script}),
+            parse_specific_tool_property("script", indentation, |tool| &mut tool.script),
             fail,
         ))(s)
     }
@@ -204,10 +205,17 @@ fn parse_tool_property<'indentation, 'result>(
 pub type ParseToolSetter<'a> = Box<dyn 'a + FnOnce(&mut Tool) -> ParserResultWithoutInput<()>>;
 
 /// Parses the script property of a tool.
-fn parse_specific_tool_property<'indentation, 'property_name, 'input, 'result, ToolPropertyPreliminaryType: PartialEq, ToolPropertyFinalType: PartialEq>(
+fn parse_specific_tool_property<
+    'indentation,
+    'property_name,
+    'input,
+    'result,
+    ToolPropertyPreliminaryType: PartialEq,
+    ToolPropertyFinalType: PartialEq,
+>(
     property_name: &'property_name str,
     indentation: &'indentation str,
-    tool_property_accessor: impl 'result + for<'tool_assigner> Fn(&'tool_assigner mut Tool) -> &'tool_assigner mut ToolProperty<ToolPropertyPreliminaryType, ToolPropertyFinalType> + Clone,
+    tool_property_accessor: impl 'result + for<'tool_property_accessor> Fn(&'tool_property_accessor mut Tool) -> &'tool_property_accessor mut ToolProperty<ToolPropertyPreliminaryType, ToolPropertyFinalType> + Clone,
 ) -> impl 'result + for<'a> FnMut(&'a str) -> ParserResult<'a, ParseToolSetter<'result>>
 where
     'property_name: 'result,
@@ -241,7 +249,10 @@ where
 
         let result = String::from(result.trim());
         if result.is_empty() {
-            return Err(nom::Err::Failure(ParserError::from(format!("Found an empty-valued script property {:?}.", property_name))));
+            return Err(nom::Err::Failure(ParserError::from(format!(
+                "Found an empty-valued script property {:?}.",
+                property_name
+            ))));
         }
 
         let tool_property_accessor = tool_property_accessor.clone();
@@ -250,7 +261,10 @@ where
             Box::new(move |tool| {
                 let tool_property = tool_property_accessor(tool);
                 if !tool_property.is_empty() {
-                    return Err(nom::Err::Failure(ParserError::from(format!("Found a duplicate definition of {:?} within the same tool.", property_name))));
+                    return Err(nom::Err::Failure(ParserError::from(format!(
+                        "Found a duplicate definition of {:?} within the same tool.",
+                        property_name
+                    ))));
                 }
                 *tool_property = result.into();
                 Ok(())

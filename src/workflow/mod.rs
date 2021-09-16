@@ -18,7 +18,9 @@ pub struct ToolProperty<PreliminaryType, FinalType = PreliminaryType> {
     value_stage: ToolPropertyStage<PreliminaryType, FinalType>,
 }
 
-impl<PreliminaryType, FinalType, T: Into<String>> From<T> for ToolProperty<PreliminaryType, FinalType> {
+impl<PreliminaryType, FinalType, T: Into<String>> From<T>
+    for ToolProperty<PreliminaryType, FinalType>
+{
     fn from(string_value: T) -> Self {
         Self {
             string_value: string_value.into(),
@@ -28,7 +30,11 @@ impl<PreliminaryType, FinalType, T: Into<String>> From<T> for ToolProperty<Preli
 }
 
 impl<PreliminaryType, FinalType> ToolProperty<PreliminaryType, FinalType> {
-    pub fn is_empty(&self) -> bool where PreliminaryType: PartialEq, FinalType: PartialEq {
+    pub fn is_empty(&self) -> bool
+    where
+        PreliminaryType: PartialEq,
+        FinalType: PartialEq,
+    {
         self.value_stage == ToolPropertyStage::Empty
     }
 }

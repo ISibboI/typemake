@@ -1,3 +1,5 @@
+//! A workflow engine designed for dynamic, efficient, reproducible and iterative experiment design.
+
 #![allow(clippy::useless_format)]
 #![warn(missing_docs)]
 
