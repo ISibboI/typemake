@@ -13,7 +13,11 @@ pub type SelectedInterpreter = python::PythonInterpreter;
 pub type InterpreterError = python::PythonInterpreterError;
 
 /// An interpreter for scripts given in the typefile.
-pub trait Interpreter: Default {
+pub trait Interpreter: Sized {
+    /// Creates a new interpreter instance.
+    /// Interpreters might be limited to a single instance.
+    fn new() -> TypemakeResult<Self>;
+
     /// Runs the given code while
     fn run(&mut self, script: &str) -> TypemakeResult<()>;
 

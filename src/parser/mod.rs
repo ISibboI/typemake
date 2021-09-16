@@ -3,9 +3,8 @@
 use crate::error::{TypemakeError, TypemakeResult};
 use crate::workflow::{Tool, ToolProperty};
 use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::bytes::complete::{take_till, take_while};
-use nom::character::complete::{line_ending, space0, space1};
+use nom::bytes::complete::{tag, take_until, take_while};
+use nom::character::complete::{line_ending, space0, space1, not_line_ending};
 use nom::combinator::{fail, iterator, map};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::{fold_many0, many0, many1};
@@ -150,14 +149,14 @@ fn nom_typefile(typefile_definition: &str) -> ParserResult<Typefile> {
         Ok((result.0, result.1.try_into()?))
     } else {
         Err(Err::Failure(ParserError::from(
-            "found additional characters after parser terminated",
+            format!("found additional characters after parser terminated: {:?}", result.0),
         )))
     }
 }
 
 /// Parses any definition at the top level of the file, which are all those that don't have any parents.
 fn parse_toplevel_definition(s: &str) -> ParserResult<ToplevelDefinition> {
-    alt((parse_tool_definition, parse_code_line))(s)
+    alt((parse_tool_definition, parse_code_line, parse_empty_line))(s)
 }
 
 /// Parses a tool definition, completely with all entries.
@@ -303,24 +302,37 @@ fn parse_code_line(s: &str) -> ParserResult<ToplevelDefinition> {
     })(s)
 }
 
+/// Parses an empty line.
+fn parse_empty_line(s: &str) -> ParserResult<ToplevelDefinition> {
+    map(pair(space0, line_ending), |_| {
+        ToplevelDefinition::CodeLine("".to_owned())
+    })(s)
+}
+
 /// Take a full line of output, being robust against different line endings as well as a last line without line ending.
 /// If the line taken is empty, return an error.
 fn take_line_disallow_empty(s: &str) -> ParserResult<&str> {
-    let line = take_till(|c| c == '\n' || c == '\r')(s)?;
+    let line = not_line_ending(s)?;
     if line.1.is_empty() {
         return fail(line.0);
     }
 
-    let newline = take_while(|c| c == '\n' || c == '\r')(line.0)?;
-    Ok((newline.0, line.1))
+    let s = match line_ending::<_, ParserError>(line.0) {
+        Ok((s, _)) => s,
+        _ => line.0,
+    };
+    Ok((s, line.1))
 }
 
 /// Take a full line of output, being robust against different line endings as well as a last line without line ending.
 /// If the line taken is empty, just return an empty `str`.
 fn take_line_allow_empty(s: &str) -> ParserResult<&str> {
-    let line = take_till(|c| c == '\n' || c == '\r')(s)?;
-    let newline = take_while(|c| c == '\n' || c == '\r')(line.0)?;
-    Ok((newline.0, line.1))
+    let line = not_line_ending(s)?;
+    let s = match line_ending::<_, ParserError>(line.0) {
+        Ok((s, _)) => s,
+        _ => line.0,
+    };
+    Ok((s, line.1))
 }
 
 /// Recognise an identifier.

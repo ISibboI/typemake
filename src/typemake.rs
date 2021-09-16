@@ -14,7 +14,7 @@ pub fn run_typemake_from_cli(cli_arguments: &CliArguments) -> TypemakeResult<()>
     let workflow = parse_typefile(&cli_arguments.typefile)?;
 
     info!("Creating interpreter");
-    let mut interpreter = SelectedInterpreter::default();
+    let mut interpreter = SelectedInterpreter::new()?;
     info!("Interpreter version is {}", interpreter.version()?);
 
     info!("Executing toplevel scripts");

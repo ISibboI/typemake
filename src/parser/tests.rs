@@ -18,11 +18,22 @@ fn test_few_code_lines() {
 }
 
 #[test]
+fn test_few_code_lines_starting_with_empty_lines() {
+    assert_eq!(
+        parse_typefile_content("\n\nabc\n\ndef").unwrap(),
+        Typefile {
+            code_lines: "\n\nabc\n\ndef\n".into(),
+            ..Default::default()
+        }
+    );
+}
+
+#[test]
 fn test_tool_name_definition() {
     assert_eq!(
         parse_typefile_content("abc\n\ntool mytool:\ndef\nefg").unwrap(),
         Typefile {
-            code_lines: "abc\ndef\nefg\n".into(),
+            code_lines: "abc\n\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -46,9 +57,9 @@ fn test_duplicate_tool_name_definition() {
 #[test]
 fn test_tool_script_definition() {
     assert_eq!(
-        parse_typefile_content("abc\n\ntool mytool:\n  interpreter: \"ls -l\"\ndef\nefg").unwrap(),
+        parse_typefile_content("abc\n\ntool mytool:\n  interpreter: \"ls -l\"\n\ndef\nefg").unwrap(),
         Typefile {
-            code_lines: "abc\ndef\nefg\n".into(),
+            code_lines: "abc\n\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -73,7 +84,7 @@ fn test_tool_multiline_script_definition() {
         )
         .unwrap(),
         Typefile {
-            code_lines: "abc\ndef\nefg\n".into(),
+            code_lines: "abc\n\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {
@@ -98,7 +109,7 @@ fn test_tool_multiline_script_definition_start_second_line() {
         )
         .unwrap(),
         Typefile {
-            code_lines: "abc\ndef\nefg\n".into(),
+            code_lines: "abc\n\ndef\nefg\n".into(),
             tools: [(
                 "mytool".to_owned(),
                 Tool {

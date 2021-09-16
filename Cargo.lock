@@ -739,6 +739,7 @@ version = "0.1.0-alpha.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "lazy_static",
  "log",
  "nom",
  "pyo3",

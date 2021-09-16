@@ -11,17 +11,27 @@ pub type TypemakeResult<T> = Result<T, TypemakeError>;
 #[derive(Error, Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum TypemakeError {
-    #[error("could not parse typefile")]
+    #[error("Could not parse typefile.")]
     /// An error that occurred in the typefile parser.
     ParserError(String),
 
-    #[error("I/O error")]
+    #[error("I/O error.")]
     /// An I/O error.
     IoError(#[from] ::std::io::Error),
 
-    #[error("Error while interpreting script")]
+    #[error("Error while interpreting script.")]
     /// An error that occurred in the script interpreter.
     InterpreterError(#[from] InterpreterError),
+
+    #[error("An error occurred.")]
+    /// An error that does not fit into the other categories.
+    GeneralError(String),
+}
+
+impl From<String> for TypemakeError {
+    fn from(error: String) -> Self {
+        Self::GeneralError(error)
+    }
 }
 
 impl<ErrorType: ToString> From<nom::Err<ErrorType>> for TypemakeError {

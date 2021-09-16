@@ -7,7 +7,7 @@ edition = "2018"
 
 [features]
 default = ["python"]
-python = ["pyo3"]
+python = ["pyo3", "lazy_static"]
 
 [dependencies]
 nom = "7"
@@ -16,6 +16,7 @@ log = "0.4"
 simplelog = "0.10"
 thiserror = "1"
 pyo3 = {version = "0.14", features = ["auto-initialize"], optional = true}
+lazy_static = {version = "1", optional = true}
 serde = "1"
 traitgraph = "0.4"
 
