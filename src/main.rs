@@ -20,13 +20,12 @@ mod typemake;
 mod workflow;
 
 /// Helper main function that executes the actual main function (`error_main`) and formats any errors it returns.
-fn main() -> Result<(), ()> {
-    if let Err(error) = error_main() {
+fn main() -> TypemakeResult<()> {
+    let result = error_main();
+    if let Err(error) = &result {
         error!("Error:\n{}", error.to_string());
-        Err(())
-    } else {
-        Ok(())
     }
+    result
 }
 
 /// The actual main function that is allowed to return an error, which is then properly formatted by the `main` function.
