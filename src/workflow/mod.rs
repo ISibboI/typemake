@@ -1,5 +1,8 @@
 //! Types describing a typemake workflow.
 
+use traitgraph::interface::GraphBase;
+use std::collections::BTreeMap;
+
 /// The stage of a value of a tool property.
 ///
 /// The value of a tool property is computed using the script interpreter, but its evaluation is allowed to fail.
@@ -65,4 +68,19 @@ pub struct Tool {
     /// The interpreter executing the tool.
     /// Typically this would be a bash interpreter executing another program or a set of programs.
     pub script: ToolProperty<String>,
+
+    //pub input: ToolProperty<ToolInputDefinition>,
+
+    //pub output: ToolProperty<ToolOutputDefinition>,
 }
+
+// TODO create separate workflow definition and workflow instantiation types.
+
+/*pub struct ToolInstance {
+
+}
+
+pub struct WorkflowGraph<Graph: GraphBase<NodeData = ToolInstance>> {
+    graph: Graph,
+    output_node_map: BTreeMap<ToolOutput, Graph::NodeIndex>,
+}*/

@@ -20,6 +20,8 @@ pub fn run_typemake_from_cli(cli_arguments: &CliArguments) -> TypemakeResult<()>
     info!("Executing toplevel scripts");
     interpreter.run(&workflow.code_lines)?;
 
+    info!("Building workflow DAG");
+
     info!("Terminating");
     Ok(())
 }
